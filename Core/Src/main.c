@@ -24,6 +24,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32fxxx_hal.h"
+//#include "defines.h"
+#include "tm_stm32_disco.h"
+#include "tm_stm32_delay.h"
+#include "tm_stm32_ds18b20.h"
+#include "tm_stm32_onewire.h"
 
 /* USER CODE END Includes */
 
@@ -48,7 +54,13 @@ I2S_HandleTypeDef hi2s3;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim1;
+
 /* USER CODE BEGIN PV */
+TM_OneWire_t OW;
+uint8_t DS_ROM[8];
+
+float temp;
 
 /* USER CODE END PV */
 
@@ -58,6 +70,7 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM1_Init(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
@@ -66,7 +79,10 @@ void MX_USB_HOST_Process(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void delay(uint32_t us) {
+	__HAL_TIM_SetCounter(&htim1,0);
+	while ((__HAL_TIM_GET_COUNTER(&htim1))<us);
+}
 /* USER CODE END 0 */
 
 /**
@@ -76,7 +92,7 @@ void MX_USB_HOST_Process(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	TM_RCC_InitSystem();
   /* USER CODE END 1 */
   
 
@@ -93,7 +109,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  TM_DISCO_LedInit();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -102,8 +118,30 @@ int main(void)
   MX_I2S3_Init();
   MX_SPI1_Init();
   MX_USB_HOST_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  TM_OneWire_Init(&OW, GPIOB, GPIO_PIN_4); /////////////////////////////
+  if (TM_OneWire_First(&OW)) {
+          /* Set LED GREEN */
+          TM_DISCO_LedOn(LED_GREEN);
 
+          /* Read ROM number */
+          TM_OneWire_GetFullROM(&OW, DS_ROM);
+     } else {
+          /* Set LED RED */
+          TM_DISCO_LedOn(LED_RED);
+     }
+  if (TM_DS18B20_Is(DS_ROM)) {
+          /* Set resolution */
+          TM_DS18B20_SetResolution(&OW, DS_ROM, TM_DS18B20_Resolution_12bits);
+
+          /* Set high and low alarms */
+          TM_DS18B20_SetAlarmHighTemperature(&OW, DS_ROM, 30);
+          TM_DS18B20_SetAlarmLowTemperature(&OW, DS_ROM, 10);
+
+          /* Start conversion on all sensors */
+          TM_DS18B20_StartAll(&OW);
+      }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -114,6 +152,22 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
+    if (TM_DS18B20_Is(DS_ROM)) {
+                /* Everything is done */
+                if (TM_DS18B20_AllDone(&OW)) {
+                    /* Read temperature from device */
+                    if (TM_DS18B20_Read(&OW, DS_ROM, &temp)) {
+                        /* Temp read OK, CRC is OK */
+
+                        /* Start again on all sensors */
+                        TM_DS18B20_StartAll(&OW);
+
+                        /* Check temperature */
+                    } else {
+                        /* CRC failed, hardware problems on data line */
+                    }
+                }
+            }
   }
   /* USER CODE END 3 */
 }
@@ -271,6 +325,52 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 0;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
 
 }
 
