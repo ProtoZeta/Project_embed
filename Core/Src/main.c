@@ -232,7 +232,7 @@ int main(void)
     	TEMP[0] = buf[2];
     	TEMP[1] = buf[3]; ///////////////////////////////////////////////
     	int t;
-    	t = ((int)buf[2] * 10) + (int)buf[3];
+    	t = ((buf[2] - '0') * 10) + (buf[3] - '0');
 //    	sscanf(TEMP, '%d', &t);
     	if (mode == 1) {
     		current_desired_temp = t;
@@ -243,7 +243,8 @@ int main(void)
     	ROTATE[0] = buf[2];
     	ROTATE[1] = buf[3];
     	int r;
-    	sscanf(ROTATE, '%d', &r);
+    	r =  ((buf[2] - '0') * 10) + (buf[3] - '0');
+//    	sscanf(ROTATE, '%d', &r);
     	if (mode == 2) {
     		current_rotate = r;
     	}
@@ -252,7 +253,8 @@ int main(void)
     	PUMP[0] = buf[2];
     	PUMP[1] = buf[3];
     	int p;
-    	sscanf(PUMP, '%d', &p);
+    	p = ((buf[2] - '0') * 10) + (buf[3] - '0');
+//    	sscanf(PUMP, '%d', &p);
     	if (mode == 2) {
     		current_pump = p;
     	}
@@ -282,13 +284,13 @@ int main(void)
   }
 
   ///////////////////////////////////PWM////////////////////////////////////
-  if (buf[1] == 'r') {
-	  setPWM(htim3, TIM_CHANNEL_1, 100, r);
-	  current_rotate = r;
-  }else if (buf[1] == 'p') {
-	  setPWM(htim3, TIM_CHANNEL_3, 100, p);
-	  current_pump = p;
-  }
+//  if (buf[1] == 'r') {
+//	  setPWM(htim3, TIM_CHANNEL_1, 100, r);
+//	  current_rotate = r;
+//  }else if (buf[1] == 'p') {
+//	  setPWM(htim3, TIM_CHANNEL_3, 100, p);
+//	  current_pump = p;
+//  }
 
   ///////////////////////////////////TRANSMIT/////////////////////////////////
   char buffer[16];
