@@ -70,7 +70,13 @@ uint8_t DS_ROM2[8];
 float temp;
 float temp2;
 
-int mode;
+int r,p,t,t2;
+
+int mode = 1;
+char rec;
+int current_pump = 50;
+int current_rotate = 50;
+int current_desired_temp = 25;
 
 char buf[16];
 
@@ -97,9 +103,24 @@ void MX_USB_HOST_Process(void);
 //	while ((__HAL_TIM_GET_COUNTER(&htim1))<us);
 //}
 
+
+
 void SystemClock_Config(void);
 /* USER CODE END 0 */
-
+void setPWM(TIM_HandleTypeDef timer, uint32_t channel, uint16_t period,
+uint16_t pulse)
+{
+ HAL_TIM_PWM_Stop(&timer, channel); // stop generation of pwm
+ TIM_OC_InitTypeDef sConfigOC;
+ timer.Init.Period = period; // set the period duration
+ HAL_TIM_PWM_Init(&timer); // reinititialise with new period value
+ sConfigOC.OCMode = TIM_OCMODE_PWM1;
+ sConfigOC.Pulse = pulse; // set the pulse duration
+ sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+ sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+ HAL_TIM_PWM_ConfigChannel(&timer, &sConfigOC, channel);
+ HAL_TIM_PWM_Start(&timer, channel); // start pwm generation
+}
 /**
   * @brief  The application entry point.
   * @retval int
@@ -107,7 +128,7 @@ void SystemClock_Config(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	TM_RCC_InitSystem();
+//	TM_RCC_InitSystem();
   /* USER CODE END 1 */
   
 
@@ -124,7 +145,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  TM_DISCO_LedInit();
+//  TM_DISCO_LedInit();
 
   /* USER CODE END SysInit */
 
@@ -146,31 +167,31 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
 
-  TM_OneWire_Init(&OW, GPIOB, GPIO_PIN_4); /////////////////////////////
-  TM_OneWire_Init(&OW2, GPIOB, GPIO_PIN_5);
-
-  if (TM_OneWire_First(&OW) && TM_OneWire_First(&OW2)) {
-          /* Set LED GREEN */
-          TM_DISCO_LedOn(LED_GREEN);
-
-          /* Read ROM number */
-          TM_OneWire_GetFullROM(&OW, DS_ROM);
-          TM_OneWire_GetFullROM(&OW2, DS_ROM2);
-     } else {
-          /* Set LED RED */
-          TM_DISCO_LedOn(LED_RED);
-     }
-  if (TM_DS18B20_Is(DS_ROM)) {
-          /* Set resolution */
-          TM_DS18B20_SetResolution(&OW, DS_ROM, TM_DS18B20_Resolution_12bits);
-          TM_DS18B20_SetResolution(&OW2, DS_ROM2, TM_DS18B20_Resolution_12bits);
-
-
-
-          /* Start conversion on all sensors */
-          TM_DS18B20_StartAll(&OW);
-          TM_DS18B20_StartAll(&OW2);
-      }
+//  TM_OneWire_Init(&OW, GPIOB, GPIO_PIN_4); /////////////////////////////
+//  TM_OneWire_Init(&OW2, GPIOB, GPIO_PIN_5);
+//
+//  if (TM_OneWire_First(&OW) && TM_OneWire_First(&OW2)) {
+//          /* Set LED GREEN */
+//          TM_DISCO_LedOn(LED_GREEN);
+//
+//          /* Read ROM number */
+//          TM_OneWire_GetFullROM(&OW, DS_ROM);
+//          TM_OneWire_GetFullROM(&OW2, DS_ROM2);
+//     } else {
+//          /* Set LED RED */
+//          TM_DISCO_LedOn(LED_RED);
+//     }
+//  if (TM_DS18B20_Is(DS_ROM)) {
+//          /* Set resolution */
+//          TM_DS18B20_SetResolution(&OW, DS_ROM, TM_DS18B20_Resolution_12bits);
+//          TM_DS18B20_SetResolution(&OW2, DS_ROM2, TM_DS18B20_Resolution_12bits);
+//
+//
+//
+//          /* Start conversion on all sensors */
+//          TM_DS18B20_StartAll(&OW);
+//          TM_DS18B20_StartAll(&OW2);
+//      }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,60 +202,100 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-    if (TM_DS18B20_Is(DS_ROM)) {
-                /* Everything is done */
-                if (TM_DS18B20_AllDone(&OW)) {
-                    /* Read temperature from device */
-                    if (TM_DS18B20_Read(&OW, DS_ROM, &temp)) {
-                        /* Temp read OK, CRC is OK */
-
-                        /* Start again on all sensors */
-                        TM_DS18B20_StartAll(&OW);
-
-                    } else {
-                        /* CRC failed, hardware problems on data line */
-                    }
-                }
-    }
-
-    if (TM_DS18B20_Is(DS_ROM2)) {
-    	if (TM_DS18B20_AllDone(&OW2)) {
-    		if (TM_DS18B20_Read(&OW2, DS_ROM2, &temp2)){
-    			TM_DS18B20_StartAll(&OW2);
-    		}
-    	}
-    }
-
-    //////////////////////////////////PWM////////////////////////////////////
-
-
-    //////////////////////////////////Transmit///////////////////////////////
+//    if (TM_DS18B20_Is(DS_ROM)) {
+//    	/* Everything is done */
+//    	if (TM_DS18B20_AllDone(&OW)) {
+//    		/* Read temperature from device */
+//    		if (TM_DS18B20_Read(&OW, DS_ROM, &temp)) {
+//    			/* Temp read OK, CRC is OK */
+//    			/* Start again on all sensors */
+//    			TM_DS18B20_StartAll(&OW);
+//    		} else {
+//    			/* CRC failed, hardware problems on data line */
+//    		}
+//    	}
+//    }
+//
+//    if (TM_DS18B20_Is(DS_ROM2)) {
+//    	if (TM_DS18B20_AllDone(&OW2)) {
+//    		if (TM_DS18B20_Read(&OW2, DS_ROM2, &temp2)){
+//    			TM_DS18B20_StartAll(&OW2);
+//    		}
+//    	}
+//    }
+    int t = (int) temp;
+    int t2 = (int) temp2;
+    //////////////////////////////////Receive///////////////////////////////
     HAL_UART_Receive(&huart2, buf, 16, 1000);
     if (buf[1] == 't') {
-    	String t = buf[2] + buf[3];
-    	t = (int)t;
-    }else if(buf[1] == 'r') {
-    	String f = buf[2] + buf[3];
-    	f = (int)f;
-    }else if(buf[1] == 'p') {
-    	String p = buf[2] + buf[3];
-    	p = (int)p;
-    }else if(buf[1] == 'm'){
-    	if (mode > 2) {
-    		mode -= 2;
-    	} else {
-    		mode += 2;
+    	char TEMP[2];
+    	TEMP[0] = buf[2];
+    	TEMP[1] = buf[3]; ///////////////////////////////////////////////
+    	int t;
+    	sscanf(TEMP, '%d', &t);
+    	if (mode == 1) {
+    		current_desired_temp = t;
     	}
-    }else {
-    	if(mode % 2 == 0) {
-    		mode -= 1;
+
+    }else if(buf[1] == 'r') {
+    	char ROTATE[2];
+    	ROTATE[0] = buf[2];
+    	ROTATE[1] = buf[3];
+    	int r;
+    	sscanf(ROTATE, '%d', &r);
+    	if (mode == 2) {
+    		current_rotate = r;
+    	}
+    }else if(buf[1] == 'p') {
+    	char PUMP[2];
+    	PUMP[0] = buf[2];
+    	PUMP[1] = buf[3];
+    	int p;
+    	sscanf(PUMP, '%d', &p);
+    	if (mode == 2) {
+    		current_pump = p;
+    	}
+    }else if(buf[1] == 'M'){
+    	if (mode == 1) {
+    		mode = 2;
     	} else {
-    		mode += 1;
+    		mode = 1;
+    	}
+    }
+    else if (buf[1] == 'm') {
+    	if(mode == 1) {
+    		mode = 3;
+    	} else if (mode == 3) {
+    		mode = 1;
+    	} else if (mode == 2) {
+    		mode = 4;
+    	} else if (mode == 4) {
+    		mode = 2;
     	}
     }
 
+
+  ///////////////////////////////////BUTTON/////////////////////////////////
+  if (1) {
+
   }
+
+  ///////////////////////////////////PWM////////////////////////////////////
+  if (buf[1] == 'r') {
+	  setPWM(htim3, TIM_CHANNEL_1, 100, r);
+	  current_rotate = r;
+  }else if (buf[1] == 'p') {
+	  setPWM(htim3, TIM_CHANNEL_3, 100, p);
+	  current_pump = p;
+  }
+
+  ///////////////////////////////////TRANSMIT/////////////////////////////////
+  char buffer[16];
+  sprintf(buffer, "%d.%d.%d.%d.%d", mode,current_desired_temp,current_desired_temp,current_rotate, current_pump);
+  HAL_UART_Transmit(&huart2, buffer,strlen(buffer), 500);
+
   /* USER CODE END 3 */
+}
 }
 
 /**
