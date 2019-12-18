@@ -70,6 +70,8 @@ uint8_t DS_ROM2[8];
 float temp;
 float temp2;
 
+int mode;
+
 char buf[16];
 
 /* USER CODE END PV */
@@ -209,7 +211,26 @@ int main(void)
     //////////////////////////////////Transmit///////////////////////////////
     HAL_UART_Receive(&huart2, buf, 16, 1000);
     if (buf[1] == 't') {
-
+    	String t = buf[2] + buf[3];
+    	t = (int)t;
+    }else if(buf[1] == 'r') {
+    	String f = buf[2] + buf[3];
+    	f = (int)f;
+    }else if(buf[1] == 'p') {
+    	String p = buf[2] + buf[3];
+    	p = (int)p;
+    }else if(buf[1] == 'm'){
+    	if (mode > 2) {
+    		mode -= 2;
+    	} else {
+    		mode += 2;
+    	}
+    }else {
+    	if(mode % 2 == 0) {
+    		mode -= 1;
+    	} else {
+    		mode += 1;
+    	}
     }
 
   }
