@@ -226,13 +226,14 @@ int main(void)
     int t = (int) temp;
     int t2 = (int) temp2;
     //////////////////////////////////Receive///////////////////////////////
-    HAL_UART_Receive(&huart2, buf, 16, 1000);
+    HAL_UART_Receive(&huart2, buf, 4, 1000);
     if (buf[1] == 't') {
     	char TEMP[2];
     	TEMP[0] = buf[2];
     	TEMP[1] = buf[3]; ///////////////////////////////////////////////
     	int t;
-    	sscanf(TEMP, '%d', &t);
+    	t = ((int)buf[2] * 10) + (int)buf[3];
+//    	sscanf(TEMP, '%d', &t);
     	if (mode == 1) {
     		current_desired_temp = t;
     	}
@@ -291,8 +292,8 @@ int main(void)
 
   ///////////////////////////////////TRANSMIT/////////////////////////////////
   char buffer[16];
-  sprintf(buffer, "%d.%d.%d.%d.%d", mode,current_desired_temp,current_desired_temp,current_rotate, current_pump);
-  HAL_UART_Transmit(&huart2, buffer,strlen(buffer), 500);
+  sprintf(buffer, "%d.%d.%d.%d.%d.", mode,current_desired_temp,current_desired_temp,current_rotate, current_pump);
+  HAL_UART_Transmit(&huart2, buffer,strlen(buffer), 1000);
 
   /* USER CODE END 3 */
 }
