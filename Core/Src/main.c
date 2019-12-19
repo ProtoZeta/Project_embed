@@ -51,12 +51,16 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
+
 I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 
@@ -90,6 +94,9 @@ static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_ADC2_Init(void);
+static void MX_TIM4_Init(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
@@ -103,24 +110,30 @@ void MX_USB_HOST_Process(void);
 //	while ((__HAL_TIM_GET_COUNTER(&htim1))<us);
 //}
 
+double accumError = 0;
+double pid(double setpoint, double current){
+	double Kp = -2.5;
+	double Ki = -1;
+	double Kd = -1;
 
+	double error = setpoint - current;
+
+	double P = Kp * error;
+
+	accumError += error;
+	double I = Ki * accumError;
+
+	static double lastError = 0;
+	double errorDiff = error - lastError;
+	lastError = error;
+	double D = Kd * errorDiff;
+
+	return P+ I;// + D;
+}
 
 void SystemClock_Config(void);
 /* USER CODE END 0 */
-void setPWM(TIM_HandleTypeDef timer, uint32_t channel, uint16_t period,
-uint16_t pulse)
-{
- HAL_TIM_PWM_Stop(&timer, channel); // stop generation of pwm
- TIM_OC_InitTypeDef sConfigOC;
- timer.Init.Period = period; // set the period duration
- HAL_TIM_PWM_Init(&timer); // reinititialise with new period value
- sConfigOC.OCMode = TIM_OCMODE_PWM1;
- sConfigOC.Pulse = pulse; // set the pulse duration
- sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
- sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
- HAL_TIM_PWM_ConfigChannel(&timer, &sConfigOC, channel);
- HAL_TIM_PWM_Start(&timer, channel); // start pwm generation
-}
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -157,6 +170,9 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_USART2_UART_Init();
+  MX_ADC1_Init();
+  MX_ADC2_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
@@ -164,8 +180,12 @@ int main(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET);
 
   HAL_TIM_Base_Start(&htim3);
+  HAL_TIM_Base_Start(&htim4);
+
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
 
 //  TM_OneWire_Init(&OW, GPIOB, GPIO_PIN_4); /////////////////////////////
 //  TM_OneWire_Init(&OW2, GPIOB, GPIO_PIN_5);
@@ -192,6 +212,8 @@ int main(void)
 //          TM_DS18B20_StartAll(&OW);
 //          TM_DS18B20_StartAll(&OW2);
 //      }
+  double min = 0;
+  double max = 4095;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -235,6 +257,7 @@ int main(void)
     	t = ((buf[2] - '0') * 10) + (buf[3] - '0');
 //    	sscanf(TEMP, '%d', &t);
     	if (mode == 1) {
+    		if (current_desired_temp != t) accumError = 0;
     		current_desired_temp = t;
     	}
 
@@ -247,6 +270,7 @@ int main(void)
 //    	sscanf(ROTATE, '%d', &r);
     	if (mode == 2) {
     		current_rotate = r;
+
     	}
     }else if(buf[1] == 'p') {
     	char PUMP[2];
@@ -257,6 +281,7 @@ int main(void)
 //    	sscanf(PUMP, '%d', &p);
     	if (mode == 2) {
     		current_pump = p;
+
     	}
     }else if(buf[1] == 'M'){
     	if (mode == 1) {
@@ -276,6 +301,31 @@ int main(void)
     		mode = 2;
     	}
     }
+    ///////////////////////////////ADC//////////////////
+    HAL_ADC_Start(&hadc1);
+    double val = HAL_ADC_GetValue(&hadc1);
+    t = (int) (val / max * 100.0);
+    HAL_ADC_Start(&hadc2);
+    val = HAL_ADC_GetValue(&hadc2);
+    t2 = (int) (val / max * 100.0);
+
+
+
+    /////////////////////////////////////////PWM/////////////////////////////
+
+    if (mode == 1) {
+    	double cr  = pid(current_desired_temp, t2);
+    	current_rotate = (int)cr;
+    	current_rotate = (current_rotate > 99) ? 99 : current_rotate;
+    	current_rotate = (current_rotate < 10) ? 10 : current_rotate;
+        TIM4->CCR2 = current_rotate;
+        current_pump = 75;
+        TIM4->CCR3 = current_pump;
+    } else {
+        TIM4->CCR2 = current_rotate;
+        TIM4->CCR3 = current_pump;
+    }
+
 
 
   ///////////////////////////////////BUTTON/////////////////////////////////
@@ -294,11 +344,10 @@ int main(void)
 
   ///////////////////////////////////TRANSMIT/////////////////////////////////
   char buffer[16];
-  sprintf(buffer, "%d.%d.%d.%d.%d.", mode,current_desired_temp,current_desired_temp,current_rotate, current_pump);
+  sprintf(buffer, "%d.%d.%d.%d.%d.", mode,t,t2,current_rotate, current_pump);
   HAL_UART_Transmit(&huart2, buffer,strlen(buffer), 1000);
-
+  }
   /* USER CODE END 3 */
-}
 }
 
 /**
@@ -341,6 +390,106 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.ScanConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  */
+  sConfig.Channel = ADC_CHANNEL_12;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
+
 }
 
 /**
@@ -529,6 +678,59 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 83;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 99;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 50;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -585,8 +787,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin 
-                          |Audio_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD6_Pin|Audio_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : CS_I2C_SPI_Pin */
   GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -638,10 +839,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
   HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD4_Pin LD3_Pin LD5_Pin LD6_Pin 
-                           Audio_RST_Pin */
-  GPIO_InitStruct.Pin = LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin 
-                          |Audio_RST_Pin;
+  /*Configure GPIO pins : LD4_Pin LD6_Pin Audio_RST_Pin */
+  GPIO_InitStruct.Pin = LD4_Pin|LD6_Pin|Audio_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
